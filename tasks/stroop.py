@@ -14,9 +14,6 @@ import os
 import gc
 import glob
 
-# Astuce pour importer utils depuis le sous-dossier tasks/
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from psychopy import visual, event, core
 from utils.base_task import BaseTask
 from utils.utils import should_quit

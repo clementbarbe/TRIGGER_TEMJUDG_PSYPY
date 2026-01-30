@@ -4,19 +4,10 @@ import random
 import gc
 import glob
 
-# Import relatif si exécuté depuis tasks/
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from psychopy import visual, event, core
 from utils.base_task import BaseTask
 from utils.utils import should_quit
-
-# QC
-try:
-    from tasks.qc.qc_nback import qc_nback
-except ImportError:
-    from qc.qc_nback import qc_nback
-
+from tasks.qc.qc_nback import qc_nback
 
 class NBack(BaseTask):
     """
@@ -374,7 +365,7 @@ class NBack(BaseTask):
                 core.wait(self.instr_dur)
 
                 # C) Sync IRMf: seulement au début du 1er bloc
-                if i_block == 0 and self.mode == 'fmri':
+                if i_block == 0 :
                     self.wait_for_trigger()  # reset clock + start_exp trigger + ET start
 
                 # D) Baseline avant bloc (si tu veux garder)

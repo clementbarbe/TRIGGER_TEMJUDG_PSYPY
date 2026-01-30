@@ -4,8 +4,6 @@ import random
 import gc
 import glob
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from psychopy import visual, event, core
 from utils.base_task import BaseTask
 from utils.utils import should_quit

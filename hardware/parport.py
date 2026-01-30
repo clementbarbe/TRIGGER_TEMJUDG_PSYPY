@@ -27,7 +27,7 @@ class ParPort:
         except Exception as e:
             self.dummy_mode = True
 
-    def send_trigger(self, code, duration=0.03):
+    def send_trigger(self, code, duration=0.005):
         """
         Envoie un trigger (code) et remet à 0 après duration secondes.
         """
@@ -36,8 +36,6 @@ class ParPort:
 
         try:
             self.port.setData(int(code))
-            core.wait(duration)
-            self.port.setData(0)
         except Exception as e:
             print(f"Erreur envoi trigger {code}: {e}")
 
