@@ -16,7 +16,6 @@ def show_menu_and_get_config(app, last_config=None):
     menu.show()
     
     app.exec() # Bloque ici tant que la fenêtre est ouverte
-    
     config = menu.get_config()
     
     menu.deleteLater()
