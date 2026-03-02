@@ -7,7 +7,7 @@ Conçue pour l'IRMf et le comportemental — CENIR, Institut du Cerveau (ICM).
 
 1. Une ampoule éteinte apparaît à l'écran
 2. **Condition ACTIVE** (barre verte) : le participant appuie pour l'allumer
-3. **Condition PASSIVE** (barre rouge) : elle s'allume automatiquement
+3. **Condition PASSIVE** (barre rouge) : un opérateur appuie sur le doigt du participant 
 4. Après un délai variable (200–700 ms), l'ampoule s'allume
 5. Le participant estime le délai perçu (100 à 800 ms, 8 boutons)
 
