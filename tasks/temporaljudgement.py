@@ -52,8 +52,6 @@ class TemporalJudgement(BaseTask):
         self._define_ttl_codes()
         self._setup_key_mapping()
         self._setup_task_stimuli()
-
-        # P0-FIX: Initialise le fichier incrémental dès le constructeur
         self._init_incremental_file(suffix=f"_{self.run_type}")
 
         self.logger.ok(
@@ -239,22 +237,20 @@ class TemporalJudgement(BaseTask):
 
         action_time = self.task_clock.getTime()
 
-        if condition == 'active':
-            self.flush_keyboard()
-            while True:
-                keys = self.get_keys(key_list=[self.key_action])
-                if keys:
-                    # Même horloge que la boucle de délai = pas de décalage
-                    action_time = self.task_clock.getTime()
-                    self.ParPort.send_trigger(self.codes['action_bulb'])
-                    self.log_trial_event('action_performed', action_key=keys[0].name)
-                    break
-                pass
+        self.flush_keyboard()
+        while True:
+            keys = self.get_keys(key_list=[self.key_action])
+            if keys:
+                # Même horloge que la boucle de délai = pas de décalage
+                action_time = self.task_clock.getTime()
+                self.ParPort.send_trigger(self.codes['action_bulb'])
+                self.log_trial_event('action_performed', action_key=keys[0].name)
+                break
+            pass
 
         # --- Phase 3: Precise Delay (Critical Timing) ---
         target_light_time = action_time + (delay_ms / 1000.0)
 
-        # P0-FIX: busy-wait pur — pas de core.wait(0.001) qui dort 15ms sur Windows
         while self.task_clock.getTime() < (target_light_time - self.frame_tolerance_s):
             pass
 
@@ -319,7 +315,6 @@ class TemporalJudgement(BaseTask):
 
         if resp_keys:
             resp_key_name = resp_keys[0].name
-            # P0-FIX: use hardware timestamp for RT calculation
             timestamp_key = resp_keys[0].tDown
 
             self.ParPort.send_trigger(self.codes['response_given'])
@@ -451,7 +446,6 @@ class TemporalJudgement(BaseTask):
         gc.enable()
         gc.collect()
 
-        # --- P0-FIX: Sauvegarde incrémentale immédiate ---
         self.save_trial_incremental(trial_summary)
 
         # --- ITI ---
