@@ -1,8 +1,4 @@
-from tasks.nback import NBack
-from tasks.flanker import Flanker
-from tasks.stroop import Stroop
 from tasks.temporaljudgement import TemporalJudgement
-from tasks.doorreward import DoorReward
 
 def create_task(config, win):
     base_kwargs = {
@@ -17,28 +13,6 @@ def create_task(config, win):
     }
 
     task_config = config['tache']
-
-    if task_config == 'NBack':
-        return NBack(
-            **base_kwargs,
-            N=config['N'],
-            n_trials=config['n_trials'],
-            increm=config['increm']
-        )
-    
-    elif task_config == 'Flanker':
-        return Flanker(
-            **base_kwargs,
-            n_trials=config['n_trials'],
-        )
-    
-    elif task_config == 'Stroop':
-        return Stroop(
-            **base_kwargs,
-            n_trials=config['n_trials'],      
-            n_choices=config['n_choices'],
-            go_nogo=config['go_nogo']
-        )
     
     if task_config == 'TemporalJudgement':
         return TemporalJudgement(
@@ -49,13 +23,6 @@ def create_task(config, win):
             run_type=config['run_type']            
         )
     
-    elif task_config == 'DoorReward':
-        return DoorReward(
-            **base_kwargs, 
-            n_trials=config['n_trials'],          
-            reward_probability=config['reward_prob'], 
-            
-        )
     else:
         print("Tâche inconnue.")
         return None

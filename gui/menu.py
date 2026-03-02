@@ -5,12 +5,7 @@ from PyQt6.QtGui import QFont
 import sys
 
 # Direct imports for task tabs
-from gui.tabs.tabs_nback import NBackTab
-from gui.tabs.tabs_flanker import FlankerTab
-from gui.tabs.tabs_stroop import StroopTab
 from gui.tabs.tabs_temporal_judgement import TemporalJudgementTab
-from gui.tabs.tabs_doorreward import DoorRewardTab
-
 from utils.utils import is_valid_name
 from utils.logger import get_logger
 
@@ -113,8 +108,6 @@ class ExperimentMenu(QMainWindow):
         self.chk_save.setChecked(self.default_config.get('enregistrer', True))
         layout.addWidget(self.chk_save)
 
-        # -- HARDWARE (Augmentés par la police globale) --
-        # Styles sans gras (Font-weight normal)
         ACTIVE_STYLE = "color: #2e7d32; font-size: 16px;" 
         INACTIVE_STYLE = "color: #757575; font-size: 16px;" 
 
@@ -140,11 +133,7 @@ class ExperimentMenu(QMainWindow):
 
     def create_task_tabs(self, parent_layout):
         self.tabs = QTabWidget()
-        self.tabs.addTab(NBackTab(self), "NBack")
-        self.tabs.addTab(FlankerTab(self), "Flanker")
-        self.tabs.addTab(StroopTab(self), "Stroop")
         self.tabs.addTab(TemporalJudgementTab(self), "Temporal Judgement")
-        self.tabs.addTab(DoorRewardTab(self), "Door Reward")
         parent_layout.addWidget(self.tabs)
 
     def validate_config(self):

@@ -1,11 +1,6 @@
-"""
-temporal_judgement.py (FIXED)
----------------------
-Correction du bug de mesure du framerate pendant les trials.
-"""
-
 import random
-import gc, os
+import gc
+import os
 import glob
 from psychopy import visual, core
 from utils.base_task import BaseTask
@@ -25,7 +20,6 @@ class TemporalJudgement(BaseTask):
                  enregistrer=True, eyetracker_actif=False, parport_actif=True,
                  **kwargs):
 
-        # --- Appel au constructeur parent ---
         super().__init__(
             win=win,
             nom=nom,
@@ -38,7 +32,6 @@ class TemporalJudgement(BaseTask):
             et_prefix='TJ'
         )
 
-        # --- Paramètres Expérimentaux Spécifiques ---
         self.mode = mode.lower()
         self.run_type = run_type.lower()
 
@@ -50,60 +43,53 @@ class TemporalJudgement(BaseTask):
         self.response_values_ms = list(response_options)
         self.stim_isi_range = (stim_isi_range[0] / 1000.0, stim_isi_range[1] / 1000.0)
 
-        # --- Variables de Session ---
         self.global_records = []
         self.current_trial_idx = 0
         self.current_phase = 'setup'
 
-        # --- Détection Résolution & Frame Rate ---
         self._detect_display_scaling()
         self._measure_frame_rate()
-
-        # --- Configuration des Codes TTL ---
         self._define_ttl_codes()
-
-        # --- Mapping des Touches ---
         self._setup_key_mapping()
-
-        # --- Préchargement des Stimuli ---
         self._setup_task_stimuli()
 
-        self.logger.ok(f"TemporalJudgement init | Mode: {self.run_type} | Frame Rate: {self.frame_rate:.2f} Hz")
+        # P0-FIX: Initialise le fichier incrémental dès le constructeur
+        self._init_incremental_file(suffix=f"_{self.run_type}")
+
+        self.logger.ok(
+            f"TemporalJudgement init | Mode: {self.run_type} | "
+            f"Frame Rate: {self.frame_rate:.2f} Hz"
+        )
 
     # =========================================================================
     # INITIALISATION
     # =========================================================================
 
     def _detect_display_scaling(self):
-        """Détecte la résolution pour adapter l'épaisseur des traits (4K vs HD)."""
         if self.win.size[1] > 1200:
             self.pixel_scale = 2.0
-            self.logger.log(f"Écran Haute Résolution détecté ({self.win.size}). Scale: x2.0")
+            self.logger.log(f"High-res display ({self.win.size}). Scale: x2.0")
         else:
             self.pixel_scale = 1.0
-            self.logger.log(f"Écran Standard ({self.win.size}). Scale: x1.0")
-
+            self.logger.log(f"Standard display ({self.win.size}). Scale: x1.0")
         self.x_spacing_scale = 1.14
 
     def _measure_frame_rate(self):
-        """Mesure le frame rate une seule fois au démarrage."""
-        self.logger.log("Mesure du frame rate en cours...")
-
+        self.logger.log("Measuring frame rate...")
         self.frame_rate = self.win.getActualFrameRate(
             nIdentical=10, nMaxFrames=100, threshold=1
         )
-
         if self.frame_rate is None:
             self.frame_rate = 60.0
-            self.logger.warn("Frame rate non détecté, valeur par défaut : 60.0 Hz")
+            self.logger.warn("Frame rate not detected, defaulting to 60.0 Hz")
         else:
-            self.logger.ok(f"Frame rate mesuré : {self.frame_rate:.2f} Hz")
+            self.logger.ok(f"Frame rate: {self.frame_rate:.2f} Hz")
 
+        self.frame_duration_s = 1.0 / self.frame_rate
         self.frame_tolerance_s = 0.75 / self.frame_rate
-        self.logger.log(f"Frame tolerance : {self.frame_tolerance_s*1000:.2f} ms")
+        self.logger.log(f"Frame tolerance: {self.frame_tolerance_s * 1000:.2f} ms")
 
     def _define_ttl_codes(self):
-        """Codes TTL spécifiques à Temporal Judgement."""
         self.codes = {
             'start_exp': 255,
             'rest_start': 200,
@@ -126,7 +112,6 @@ class TemporalJudgement(BaseTask):
         }
 
     def _setup_key_mapping(self):
-        """Configure les touches selon le mode (fMRI vs Comportemental)."""
         if self.mode == 'fmri':
             self.key_action = 'b'
             self.keys_responses = ['d', 'n', 'z', 'e', 'b', 'y', 'g', 'r']
@@ -140,15 +125,7 @@ class TemporalJudgement(BaseTask):
             key: ms for key, ms in zip(self.keys_responses, self.response_values_ms)
         }
 
-        self.logger.log(
-            f"Mapping touches ({self.mode}): "
-            f"Action={self.key_action}, Responses={self.keys_responses[:3]}..."
-        )
-
     def _setup_task_stimuli(self):
-        """Charge tous les stimuli visuels spécifiques."""
-
-        # --- Images des Ampoules ---
         bulb_size = (0.45 * 0.9, 0.9 * 0.9)
         bulb_pos = (0.0, 0.0)
 
@@ -163,16 +140,14 @@ class TemporalJudgement(BaseTask):
                 self.win, image=img_on, size=bulb_size, pos=bulb_pos
             )
         else:
-            self.logger.warn("Images ampoules absentes, utilisation de cercles.")
+            self.logger.warn("Bulb images not found, using circles.")
             self.bulb_off_img = visual.Circle(self.win, radius=0.2, fillColor='grey')
             self.bulb_on_img = visual.Circle(self.win, radius=0.2, fillColor='yellow')
 
-        # --- Barre de Condition ---
         self.colored_bar = visual.Rect(
             win=self.win, width=0.15, height=0.04, pos=(0.0, -0.5)
         )
 
-        # --- Textes de Réponse ---
         self.response_title = visual.TextStim(
             self.win, text="Combien de ms avez-vous perçu ?",
             color='white', height=0.05, pos=(0, 0.3)
@@ -187,19 +162,17 @@ class TemporalJudgement(BaseTask):
             color='white', height=0.045, pos=(0, -0.2)
         )
 
-        # --- Positions des Soulignements ---
         base_positions = [-0.35, -0.255, -0.15, -0.05, 0.055, 0.16, 0.26, 0.36]
         self.underline_x_positions = [x * self.x_spacing_scale for x in base_positions]
         self.underline_y_line = -0.055
 
-        self.logger.log("Stimuli Temporal Judgement chargés.")
+        self.logger.log("Stimuli loaded.")
 
     # =========================================================================
-    # LOGGING SPÉCIFIQUE
+    # LOGGING
     # =========================================================================
 
     def log_trial_event(self, event_type, **kwargs):
-        """Enregistre un événement avec contexte de phase et de trial."""
         current_time = self.task_clock.getTime()
 
         if self.eyetracker_actif:
@@ -224,30 +197,28 @@ class TemporalJudgement(BaseTask):
     # =========================================================================
 
     def draw_lightbulb(self, base_color, bulb_on=False):
-        """Affiche l'ampoule (ON/OFF) + la barre de condition."""
         self.colored_bar.fillColor = base_color
         self.colored_bar.lineColor = base_color
         self.colored_bar.draw()
-
         bulb = self.bulb_on_img if bulb_on else self.bulb_off_img
         bulb.draw()
 
     def run_trial(self, trial_index, total_trials, condition, delay_ms, feedback=False):
         """
         Exécute un essai complet avec timing sub-millisecondes.
-        Utilise self.get_keys() (polling) et self.wait_keys() (bloquant).
+
         """
         self.should_quit()
 
         # =================================================================
-        # CRITICAL TIMING START: DISABLE GARBAGE COLLECTOR
+        # CRITICAL TIMING: DISABLE GC
         # =================================================================
         gc.disable()
 
         self.current_trial_idx = trial_index
         base_color = '#00FF00' if condition == 'active' else '#FF0000'
 
-        # --- Phase 1: Début de Trial ---
+        # --- Phase 1: Trial Start ---
         self.log_trial_event(
             'trial_start', condition=condition,
             delay_target_ms=delay_ms, feedback_mode=feedback
@@ -257,60 +228,65 @@ class TemporalJudgement(BaseTask):
             else self.codes['trial_passive']
         )
 
-        # Fixation initiale
         self.fixation.draw()
         self.win.callOnFlip(self.ParPort.send_trigger, trigger_code)
         self.win.flip()
         core.wait(0.5)
 
-        # --- Phase 2: Attente Action ou Déclenchement Automatique ---
+        # --- Phase 2: Action or Auto ---
         self.draw_lightbulb(base_color=base_color, bulb_on=False)
         self.win.flip()
 
-        action_time = 0
+        action_time = self.task_clock.getTime()
 
         if condition == 'active':
             self.flush_keyboard()
             while True:
-                # Ajout de key_list= pour sécuriser l'appel à la méthode
-                keys = self.get_keys(key_list=[self.key_action]) 
+                keys = self.get_keys(key_list=[self.key_action])
                 if keys:
-                    # FIX: On utilise task_clock au lieu de tDown pour rester sur la même horloge !
-                    action_time = self.task_clock.getTime() 
+                    # Même horloge que la boucle de délai = pas de décalage
+                    action_time = self.task_clock.getTime()
                     self.ParPort.send_trigger(self.codes['action_bulb'])
                     self.log_trial_event('action_performed', action_key=keys[0].name)
                     break
-                core.wait(0.0005)
-        else:
-            # FIX: En condition PASSIVE, on n'attend pas de touche, on simule une action.
-            auto_wait = random.uniform(0.5, 1.5) # Temps aléatoire avant allumage auto
-            core.wait(auto_wait)
-            action_time = self.task_clock.getTime()
-            self.log_trial_event('action_simulated_passive')
+                pass
 
-        # --- Phase 3: Délai Précis (Timing Critique) ---
+        # --- Phase 3: Precise Delay (Critical Timing) ---
         target_light_time = action_time + (delay_ms / 1000.0)
 
+        # P0-FIX: busy-wait pur — pas de core.wait(0.001) qui dort 15ms sur Windows
         while self.task_clock.getTime() < (target_light_time - self.frame_tolerance_s):
-            core.wait(0.001)
+            pass
 
-        # --- Phase 4: Allumage de l'Ampoule (Synchronized Flip) ---
+        # --- Phase 4: Bulb ON (synchronized flip) ---
         self.draw_lightbulb(base_color=base_color, bulb_on=True)
         self.win.callOnFlip(self.ParPort.send_trigger, self.codes['bulb_on'])
+
+        flip_timestamps = {}
+
+        def _capture_flip_time():
+            flip_timestamps['bulb_on'] = self.task_clock.getTime()
+
+        self.win.callOnFlip(_capture_flip_time)
         self.win.flip()
 
-        bulb_on_time = self.task_clock.getTime()
+        bulb_on_time = flip_timestamps.get('bulb_on', self.task_clock.getTime())
         actual_delay = (bulb_on_time - action_time) * 1000
         error_ms = actual_delay - delay_ms
 
+        if abs(error_ms) > (self.frame_duration_s * 1000 * 1.5):
+            self.logger.warn(
+                f"TIMING WARNING Trial {trial_index}: "
+                f"error={error_ms:.2f}ms (>{self.frame_duration_s*1000*1.5:.1f}ms 1.5 frame)"
+            )
+
         self.log_trial_event('bulb_lit', actual_delay_ms=actual_delay, error_ms=error_ms)
 
-        # Affichage ampoule allumée
         wait_duration = random.uniform(1.2, 1.8)
         core.wait(wait_duration)
         self.win.flip()
 
-        # --- Phase 5: Prompt de Réponse (Attente bloquante avec timeout) ---
+        # --- Phase 5: Response Prompt ---
         t0_response = self.task_clock.getTime()
         self.log_trial_event('response_prompt_shown')
         self.ParPort.send_trigger(self.codes['response_prompt'])
@@ -324,15 +300,27 @@ class TemporalJudgement(BaseTask):
             key_list=self.keys_responses,
             max_wait=5.0
         )
-        # NOTE: les quit keys sont gérées automatiquement par wait_keys()
 
         rt = None
         response_ms = None
 
-        # --- Gestion de la Réponse ou Timeout ---
+        # --- Trial summary record for incremental save ---
+        trial_summary = {
+            'participant': self.nom,
+            'session': self.session,
+            'phase': self.current_phase,
+            'trial': trial_index,
+            'condition': condition,
+            'delay_target_ms': delay_ms,
+            'actual_delay_ms': round(actual_delay, 3),
+            'timing_error_ms': round(error_ms, 3),
+            'feedback': feedback,
+        }
+
         if resp_keys:
             resp_key_name = resp_keys[0].name
-            timestamp_key = self.task_clock.getTime()
+            # P0-FIX: use hardware timestamp for RT calculation
+            timestamp_key = resp_keys[0].tDown
 
             self.ParPort.send_trigger(self.codes['response_given'])
 
@@ -340,7 +328,7 @@ class TemporalJudgement(BaseTask):
             response_ms = self.response_key_to_ms.get(resp_key_name)
             idx_user = self.keys_responses.index(resp_key_name)
 
-            # --- Feedback Visuel (Training Mode) ---
+            # --- Feedback ---
             if feedback:
                 is_correct = (response_ms == delay_ms)
                 user_bar_color = 'green' if is_correct else 'yellow'
@@ -391,7 +379,6 @@ class TemporalJudgement(BaseTask):
                 core.wait(1.0)
 
             else:
-                # Mode sans feedback : soulignement jaune
                 underline = visual.Line(
                     self.win,
                     start=(self.underline_x_positions[idx_user] - 0.04,
@@ -424,6 +411,14 @@ class TemporalJudgement(BaseTask):
                 f"RT: {rt:.3f}s {fb_str}"
             )
 
+            # Complete trial summary
+            trial_summary.update({
+                'response_key': resp_key_name,
+                'response_ms': response_ms,
+                'rt_s': round(rt, 5),
+                'timeout': False
+            })
+
         else:
             # --- TIMEOUT ---
             self.ParPort.send_trigger(self.codes['timeout'])
@@ -443,13 +438,23 @@ class TemporalJudgement(BaseTask):
                 f"Target: {delay_ms:>3}ms | TIMEOUT"
             )
 
+            trial_summary.update({
+                'response_key': None,
+                'response_ms': None,
+                'rt_s': None,
+                'timeout': True
+            })
+
         # =================================================================
-        # CRITICAL TIMING END: RE-ENABLE GARBAGE COLLECTOR
+        # CRITICAL TIMING END: RE-ENABLE GC
         # =================================================================
         gc.enable()
         gc.collect()
 
-        # --- Phase 7: ITI ---
+        # --- P0-FIX: Sauvegarde incrémentale immédiate ---
+        self.save_trial_incremental(trial_summary)
+
+        # --- ITI ---
         isi = random.uniform(*self.stim_isi_range)
         self.fixation.draw()
         self.win.flip()
@@ -464,7 +469,6 @@ class TemporalJudgement(BaseTask):
     # =========================================================================
 
     def build_trials(self, n_trials, training=False):
-        """Génère une liste de trials avec randomisation sous contraintes."""
         conditions = ['active'] if training else ['active', 'passive']
 
         if training:
@@ -480,7 +484,6 @@ class TemporalJudgement(BaseTask):
         def build_pool():
             n_per_condition = n_trials // 2
             remainder = n_trials % 2
-
             pool = []
             for cond in conditions:
                 n_for_cond = n_per_condition + (
@@ -488,23 +491,25 @@ class TemporalJudgement(BaseTask):
                 )
                 n_per_delay = n_for_cond // len(self.delays_ms)
                 delay_remainder = n_for_cond % len(self.delays_ms)
-
                 for delay in self.delays_ms:
                     count = n_per_delay + (1 if delay_remainder > 0 else 0)
                     if delay_remainder > 0:
                         delay_remainder -= 1
                     pool.extend([(cond, delay)] * count)
-
             return pool
 
         def count_recent(trial_list, condition=None, delay=None):
+            """Count consecutive matching trials from the end of the list."""
             if not trial_list:
                 return 0
             count = 0
             for trial in reversed(trial_list):
+                match = False
                 if condition is not None and trial[0] == condition:
-                    count += 1
-                elif delay is not None and trial[1] == delay:
+                    match = True
+                if delay is not None and trial[1] == delay:
+                    match = True
+                if match:
                     count += 1
                 else:
                     break
@@ -521,7 +526,6 @@ class TemporalJudgement(BaseTask):
         def get_best_candidates(pool, trial_list):
             if not trial_list:
                 return pool[:]
-
             valid = [t for t in pool if is_valid(trial_list, t)]
             if not valid:
                 return []
@@ -545,10 +549,8 @@ class TemporalJudgement(BaseTask):
                 sequence = []
                 remaining = pool[:]
                 random.shuffle(remaining)
-
                 while len(sequence) < n_trials:
                     candidates = get_best_candidates(remaining, sequence)
-
                     if not candidates:
                         if len(sequence) < 3:
                             break
@@ -557,15 +559,12 @@ class TemporalJudgement(BaseTask):
                             remaining.append(removed)
                         random.shuffle(remaining)
                         continue
-
                     top_n = min(5, len(candidates))
                     chosen = random.choice(candidates[:top_n])
                     sequence.append(chosen)
                     remaining.remove(chosen)
-
                 if len(sequence) == n_trials:
                     return sequence
-
             return None
 
         max_restarts = 20
@@ -576,18 +575,16 @@ class TemporalJudgement(BaseTask):
                 return result
 
         self.logger.warn(
-            f"Contraintes difficiles à respecter pour {n_trials} trials. "
-            "Utilisation d'une randomisation simple."
+            f"Constraints hard to satisfy for {n_trials} trials. Using simple shuffle."
         )
         pool = build_pool()
         random.shuffle(pool)
         return pool
 
     def run_trial_block(self, n_trials, block_name, phase_tag, feedback):
-        """Exécute un bloc complet d'essais."""
         self.current_phase = phase_tag
         self.log_trial_event('block_start', block_name=block_name, feedback_mode=feedback)
-        self.logger.log(f"--- Bloc Start: {block_name} ({n_trials} essais) ---")
+        self.logger.log(f"--- Block Start: {block_name} ({n_trials} trials) ---")
 
         trials = self.build_trials(n_trials, training=(phase_tag == 'training'))
         total_trials = len(trials)
@@ -596,14 +593,13 @@ class TemporalJudgement(BaseTask):
             self.run_trial(i, total_trials, cond, delay, feedback=feedback)
 
         self.log_trial_event('block_end', block_name=block_name)
-        self.logger.log(f"--- Bloc End: {block_name} ---")
+        self.logger.log(f"--- Block End: {block_name} ---")
 
     # =========================================================================
     # CRISIS VALIDATION WINDOW
     # =========================================================================
 
     def show_crisis_validation_window(self):
-        """Fenêtre de validation de crise (spécifique au protocole)."""
         self.current_phase = 'crisis_validation'
         self.current_trial_idx = None
         self.logger.log("=== Entering Crisis Validation Window ===")
@@ -611,7 +607,7 @@ class TemporalJudgement(BaseTask):
         loop_crisis = True
 
         while loop_crisis:
-            # --- 1. Prompt Démarrage ---
+            # --- 1. Launch Prompt ---
             msg_launch = visual.TextStim(
                 self.win, text='Appuyez pour démarrer la crise', height=0.08
             )
@@ -622,9 +618,8 @@ class TemporalJudgement(BaseTask):
             self.ParPort.send_trigger(self.codes['crisis_prompt'])
 
             keys = self.wait_keys(key_list=self.keys_responses)
-            # quit géré automatiquement par wait_keys()
 
-            # --- 2. Simulation Action ---
+            # --- 2. Crisis Action ---
             self.log_trial_event('crisis_action_started', trigger_key=keys[0].name)
             self.ParPort.send_trigger(self.codes['crisis_start'])
 
@@ -637,7 +632,7 @@ class TemporalJudgement(BaseTask):
             self.ParPort.send_trigger(self.codes['crisis_end'])
             self.log_trial_event('crisis_action_ended', end_key=keys[0].name)
 
-            # --- 3. Validation Résultat ---
+            # --- 3. Validation ---
             choice_text = visual.TextStim(
                 self.win,
                 text='[1-4] Crise réussie     [5-8] Crise échouée',
@@ -668,7 +663,6 @@ class TemporalJudgement(BaseTask):
             )
             self.logger.log(f"Crisis Outcome: {result_label}")
 
-            # Feedback
             confirmation = visual.TextStim(
                 self.win, text=f"Résultat : {result_label}", height=0.08
             )
@@ -676,7 +670,7 @@ class TemporalJudgement(BaseTask):
             self.win.flip()
             core.wait(1.0)
 
-            # --- 4. Retry si Échec ---
+            # --- 4. Retry on Failure ---
             if not success:
                 retry_text = visual.TextStim(
                     self.win,
@@ -694,7 +688,7 @@ class TemporalJudgement(BaseTask):
                         'crisis_retry_decision', choice='no_retry_quit'
                     )
                     self.ParPort.send_trigger(self.codes['crisis_retry_no'])
-                    should_quit(self.win, quit=True)
+                    self.should_quit(force_quit=True)
                 else:
                     self.log_trial_event(
                         'crisis_retry_decision', choice='retry'
@@ -711,8 +705,8 @@ class TemporalJudgement(BaseTask):
     # =========================================================================
 
     def run(self):
-        """Boucle principale de l'expérience."""
         finished_naturally = False
+        saved_path = None
 
         try:
             # Instructions
@@ -739,14 +733,11 @@ class TemporalJudgement(BaseTask):
                 )
 
             self.show_instructions(instructions)
-
-            # Trigger
             self.wait_for_trigger()
 
-            # Exécution selon le mode
             if self.run_type == 'training':
                 self.logger.log(
-                    f"Lancement : TRAINING ({self.n_trials_training} essais)"
+                    f"Starting: TRAINING ({self.n_trials_training} trials)"
                 )
                 self.show_resting_state(duration_s=10.0)
                 self.run_trial_block(
@@ -757,7 +748,7 @@ class TemporalJudgement(BaseTask):
                 )
 
             elif self.run_type == 'base':
-                self.logger.log("Lancement : PROTOCOLE COMPLET")
+                self.logger.log("Starting: FULL PROTOCOL")
                 self.show_resting_state(duration_s=10.0)
                 self.run_trial_block(
                     self.n_trials_base,
@@ -774,7 +765,7 @@ class TemporalJudgement(BaseTask):
                 )
 
             else:
-                self.logger.log("Lancement : BLOC COURT")
+                self.logger.log("Starting: SHORT BLOCK")
                 self.show_resting_state(duration_s=150.0)
                 self.show_crisis_validation_window()
                 self.run_trial_block(
@@ -785,37 +776,35 @@ class TemporalJudgement(BaseTask):
                 )
 
             finished_naturally = True
-            self.logger.ok("Expérience terminée avec succès.")
+            self.logger.ok("Task completed successfully.")
 
         except (KeyboardInterrupt, SystemExit):
-            self.logger.warn("Interruption manuelle.")
+            self.logger.warn("Manual interruption.")
 
         except Exception as e:
-            self.logger.err(f"ERREUR CRITIQUE : {e}")
+            self.logger.err(f"CRITICAL ERROR: {e}")
             import traceback
             traceback.print_exc()
             raise
 
         finally:
-            self.logger.log("Sauvegarde finale...")
+            self.logger.log("Final save...")
 
             if self.eyetracker_actif:
                 self.EyeTracker.stop_recording()
                 self.EyeTracker.send_message("END_EXP")
                 self.EyeTracker.close_and_transfer_data(self.data_dir)
 
-            self.save_data(
+            saved_path = self.save_data(
                 data_list=self.global_records,
                 filename_suffix=f"_{self.run_type}"
             )
 
-            list_of_files = glob.glob(os.path.join(self.data_dir, '*.csv'))
-            if list_of_files:
-                latest_file = max(list_of_files, key=os.path.getctime)
+            if saved_path and os.path.exists(saved_path):
                 try:
-                    qc_temporaljudgement(latest_file)
+                    qc_temporaljudgement(saved_path)
                 except Exception as e:
-                    self.logger.warn(f"Echec génération QC: {e}")
+                    self.logger.warn(f"QC generation failed: {e}")
 
             if finished_naturally:
                 end_msg = "Fin de la session.\nMerci pour votre participation."

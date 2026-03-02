@@ -4,8 +4,6 @@ BaseTask - Classe mère pour les tâches fMRI/Comportementales
 Gère l'initialisation commune, le hardware, les chemins et les
 fonctions de timing standard (Trigger, Resting State).
 
-Auteur : Clément BARBE / CENIR
-Date : Janvier 2026
 """
 
 import os
@@ -13,7 +11,7 @@ import csv
 from datetime import datetime
 
 from psychopy import visual, core
-from psychopy.hardware.keyboard import Keyboard   
+from psychopy.hardware.keyboard import Keyboard
 from utils.logger import get_logger
 from utils.hardware_manager import setup_hardware
 
@@ -24,8 +22,8 @@ class BaseTask:
 
     API Clavier (3 méthodes) :
         flush_keyboard()  → vide le buffer
-        wait_keys()       → bloquant (instructions, trigger, réponses)
-        get_keys()        → non-bloquant (polling en boucle)
+        wait_keys()       → bloquant
+        get_keys()        → non-bloquant (polling)
     """
 
     QUIT_KEYS = ['escape', 'q']
@@ -47,117 +45,172 @@ class BaseTask:
         self.task_clock = core.Clock()
         self.codes = {}
 
+        self._incremental_path = None
+        self._incremental_header_written = False
+
         self._init_paths(folder_name)
         self._init_hardware()
         self._init_keyboard()
         self._init_common_stimuli()
 
+    # =================================================================
+    #  QUIT — P0-FIX : signature unique et cohérente
+    # =================================================================
+
     def should_quit(self, force_quit=False):
         """
-        Vérifie si on doit quitter l'expérience (Échap, Q ou A).
-        À appeler dans vos boucles (ex: pendant les core.wait ou les win.flip).
+        Vérifie si on doit quitter l'expérience.
+
+        Args:
+            force_quit (bool): Si True, quitte immédiatement sans checker le clavier.
+
+        Returns:
+            True si quit détecté (en pratique, core.quit() est appelé avant le return).
         """
         quit_detected = force_quit
 
         if not quit_detected:
-            keys = self.kb.getKeys(keyList=['escape', 'q', 'a'], waitRelease=False, clear=True)
+            keys = self.kb.getKeys(
+                keyList=['escape', 'q', 'a'],
+                waitRelease=False,
+                clear=True
+            )
             if keys:
                 quit_detected = True
 
         if quit_detected:
+            self.logger.warn("Quit signal detected. Cleaning up...")
+
+            # P0-FIX: sauvegarde d'urgence avant de quitter
+            self._emergency_save()
+
             if self.win:
                 try:
                     self.win.close()
                 except Exception:
                     pass
-            core.quit() 
+            core.quit()
             return True
+
         return False
 
+    def _emergency_save(self):
+        """P0-FIX: Sauvegarde d'urgence des données en mémoire avant quit."""
+        data = getattr(self, 'global_records', [])
+        if data and self.enregistrer:
+            try:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                safe_name = self.task_name.replace(' ', '')
+                fname = f"{self.nom}_{safe_name}_EMERGENCY_{timestamp}.csv"
+                path = os.path.join(self.data_dir, fname)
+                all_keys = sorted(set().union(*(d.keys() for d in data)))
+                with open(path, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=all_keys)
+                    writer.writeheader()
+                    writer.writerows(data)
+                self.logger.warn(f"Emergency save: {path}")
+            except Exception as e:
+                self.logger.err(f"Emergency save FAILED: {e}")
+
     # =================================================================
-    #  CLAVIER — 3 MÉTHODES, C'EST TOUT
+    #  CLAVIER — 3 MÉTHODES
     # =================================================================
 
     def _init_keyboard(self):
-        """
-        Crée le Keyboard lié à task_clock.
-        
-        Tous les timestamps (.tDown, .rt) sont référencés 
-        à self.task_clock automatiquement.
-        """
         self.kb = Keyboard(clock=self.task_clock)
         self.logger.log("Keyboard init (psychtoolbox backend).")
 
     def flush_keyboard(self):
-        """Vide le buffer. À appeler avant chaque phase d'écoute."""
+        """Vide le buffer."""
         self.kb.clearEvents()
+
+    def _build_key_list(self, key_list):
+        """
+        Injecte TOUJOURS les quit keys dans la liste d'écoute.
+        Retourne None si key_list est None (= toutes les touches).
+        """
+        if key_list is None:
+            return None
+        # set() pour éviter les doublons si escape est déjà dedans
+        return list(set(key_list + self.QUIT_KEYS))
+
+    def _filter_and_check_quit(self, keys, original_key_list):
+        """
+        1. Vérifie si une quit key a été pressée → force quit
+        2. Filtre les quit keys hors du retour pour l'appelant
+        
+        Args:
+            keys: Liste de Key objects retournée par kb
+            original_key_list: La key_list demandée par l'appelant (avant injection)
+        
+        Returns:
+            list[Key] contenant uniquement les touches demandées par l'appelant
+        """
+        if not keys:
+            return keys
+
+        # 1. Quit check
+        for k in keys:
+            if k.name in self.QUIT_KEYS:
+                self.logger.warn(f"Quit key pressed: {k.name}")
+                self.should_quit(force_quit=True)
+                return []  # Ne sera jamais atteint (core.quit above), sécurité
+
+        # 2. Filtrer : ne retourner que ce que l'appelant a demandé
+        if original_key_list is not None:
+            keys = [k for k in keys if k.name in original_key_list]
+
+        return keys
 
     def wait_keys(self, key_list=None, max_wait=float('inf')):
         """
         Attente bloquante d'un appui clavier.
+        Les quit keys (escape, q) sont TOUJOURS écoutées.
 
         Args:
             key_list: Touches acceptées. None = toutes.
-            max_wait: Timeout en secondes. inf = infini.
+            max_wait: Timeout en secondes.
 
         Returns:
             list[Key] ou None si timeout.
-            Chaque Key a : .name, .tDown, .rt, .duration
-
-        Usage :
-            # Instructions → attente infinie, toutes touches
-            self.wait_keys()
-            
-            # Réponse avec timeout
-            keys = self.wait_keys(['a','z','e'], max_wait=5.0)
-            if keys:
-                name, rt = keys[0].name, keys[0].tDown
         """
         self.flush_keyboard()
 
+        effective_list = self._build_key_list(key_list)
+
         keys = self.kb.waitKeys(
-            keyList=key_list,
+            keyList=effective_list,
             maxWait=max_wait,
             waitRelease=False,
             clear=True
         )
 
-        if keys and keys[0].name in self.QUIT_KEYS:
-            self.logger.warn(f"Quit: {keys[0].name}")
-            self.should_quit()
+        if not keys:
+            return None
 
-        return keys
+        keys = self._filter_and_check_quit(keys, key_list)
+        return keys if keys else None
 
     def get_keys(self, key_list=None):
         """
         Lecture non-bloquante du buffer clavier.
+        Les quit keys (escape, q) sont TOUJOURS écoutées.
 
         Args:
             key_list: Filtre touches. None = toutes.
 
         Returns:
             list[Key] (peut être vide).
-
-        Usage dans une boucle de polling :
-            while True:
-                keys = self.get_keys([self.key_action])
-                if keys:
-                    action_time = keys[0].tDown
-                    break
-                core.wait(0.0005)
         """
+        effective_list = self._build_key_list(key_list)
+
         keys = self.kb.getKeys(
-            keyList=key_list,
+            keyList=effective_list,
             waitRelease=False,
             clear=True
         )
 
-        for k in keys:
-            if k.name in self.QUIT_KEYS:
-                self.logger.warn(f"Quit: {k.name}")
-                self.should_quit(quit=True)
-
-        return keys
+        return self._filter_and_check_quit(keys, key_list)
 
     # =================================================================
     #  CHEMINS
@@ -220,7 +273,6 @@ class BaseTask:
     # =================================================================
 
     def show_instructions(self, text_override=None):
-        """Affiche instructions, attend un appui."""
         msg = text_override or (
             f"Bienvenue : {self.task_name}\n\n"
             "Appuyez sur une touche pour continuer."
@@ -229,20 +281,17 @@ class BaseTask:
         self.instr_stim.draw()
         self.win.flip()
         core.wait(0.5)
-        self.wait_keys()  # bloquant, toutes touches
+        self.wait_keys()
 
     def wait_for_trigger(self, trigger_key='t'):
-        """Attente trigger IRM → reset clock → start markers."""
         self.instr_stim.text = f"Attente trigger IRM [{trigger_key}]..."
         self.instr_stim.draw()
         self.win.flip()
         self.logger.log("Waiting for trigger...")
 
-        # Attente trigger uniquement (pas de quit check ici)
         self.flush_keyboard()
         self.kb.waitKeys(keyList=[trigger_key], waitRelease=False, clear=True)
 
-        # t=0
         self.task_clock.reset()
 
         start_code = self.codes.get('start_exp', 255)
@@ -257,7 +306,6 @@ class BaseTask:
     def show_resting_state(self, duration_s=10.0,
                            code_start_key='rest_start',
                            code_end_key='rest_end'):
-        """Fixation pour baseline."""
         self.logger.log(f"Rest : {duration_s}s")
 
         self.ParPort.send_trigger(self.codes.get(code_start_key, 0))
@@ -274,10 +322,56 @@ class BaseTask:
                 self.EyeTracker.send_message("REST_END")
 
     # =================================================================
-    #  SAUVEGARDE
+    #  SAUVEGARDE — P0-FIX : incrémentale + finale
     # =================================================================
 
+    def _init_incremental_file(self, suffix=""):
+        """
+        P0-FIX: Crée le fichier CSV incrémental au début de la session.
+        Appelé une fois, avant le premier trial.
+        """
+        if not self.enregistrer:
+            return
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        safe_name = self.task_name.replace(' ', '')
+        fname = f"{self.nom}_{safe_name}{suffix}_{timestamp}_incremental.csv"
+        self._incremental_path = os.path.join(self.data_dir, fname)
+        self._incremental_header_written = False
+        self.logger.log(f"Incremental file ready: {self._incremental_path}")
+
+    def save_trial_incremental(self, trial_record):
+        """
+        P0-FIX: Écrit UN trial immédiatement sur disque (append).
+        Appelé à la fin de chaque trial dans run_trial().
+
+        Args:
+            trial_record (dict): Données du trial à sauvegarder.
+        """
+        if not self.enregistrer or not trial_record:
+            return
+        if self._incremental_path is None:
+            self._init_incremental_file()
+
+        try:
+            file_exists = os.path.exists(self._incremental_path)
+            with open(self._incremental_path, 'a', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=sorted(trial_record.keys()))
+
+                # Écrire le header seulement la première fois
+                if not self._incremental_header_written or not file_exists:
+                    writer.writeheader()
+                    self._incremental_header_written = True
+
+                writer.writerow(trial_record)
+        except Exception as e:
+            self.logger.err(f"Incremental save error: {e}")
+
     def save_data(self, data_list=None, filename_suffix=""):
+        """
+        Sauvegarde finale complète (appelée dans finally).
+        Le fichier incrémental sert de backup ; celui-ci est le fichier propre.
+        """
         if data_list is None:
             data_list = getattr(self, 'global_records', [])
 
@@ -296,11 +390,14 @@ class BaseTask:
                 writer = csv.DictWriter(f, fieldnames=all_keys)
                 writer.writeheader()
                 writer.writerows(data_list)
-            self.logger.ok(f"Saved : {path}")
+            self.logger.ok(f"Saved: {path}")
         except Exception as e:
-            self.logger.err(f"SAVE ERROR : {e}")
-            with open(path + '.bak', 'w') as f:
-                f.write(str(data_list))
+            self.logger.err(f"SAVE ERROR: {e}")
+            try:
+                with open(path + '.bak', 'w') as f:
+                    f.write(str(data_list))
+            except Exception:
+                pass
 
         return path
 

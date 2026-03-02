@@ -3,66 +3,57 @@ from utils.logger import get_logger
 
 logger = get_logger()
 
+
 # =============================================================================
 # 1. FAIL-SAFE DUMMY CLASSES
 # =============================================================================
 
 class SafeDummyParPort:
-    """
-    Mock class for Parallel Port. 
-    Used when hardware is disabled or drivers are missing.
-    """
-    def __init__(self): 
+    def __init__(self):
         pass
 
-    def send_trigger(self, code, duration=0.03): 
-        # Silent pass to avoid console spamming during high-frequency loops
+    def send_trigger(self, code, duration=0.03):
         pass
 
-    def reset(self): 
+    def reset(self):
         pass
+
 
 class SafeDummyEyeTracker:
-    """
-    Mock class for EyeTracker (Pylink).
-    Mimics the API of the real EyeTracker to prevent AttributeErrors.
-    """
-    def __init__(self, sample_rate=1000, dummy_mode=True): 
+    def __init__(self, sample_rate=1000, dummy_mode=True):
         pass
 
-    def initialize(self, file_name="TEST.EDF"): 
+    def initialize(self, file_name="TEST.EDF"):
         logger.log(f"[Dummy ET] Virtual file defined: {file_name}")
 
-    def send_message(self, msg): 
-        pass 
-
-    def start_recording(self): 
-        logger.log("[Dummy ET] Start Recording (Simulation)")
-
-    def stop_recording(self): 
+    def send_message(self, msg):
         pass
 
-    def close_and_transfer_data(self, local_folder="data"): 
+    def start_recording(self):
+        logger.log("[Dummy ET] Start Recording (Simulation)")
+
+    def stop_recording(self):
+        pass
+
+    def close_and_transfer_data(self, local_folder="data"):
         logger.log(f"[Dummy ET] Data transfer simulation to {local_folder}")
 
+
 # =============================================================================
-# 2. SECURE IMPORTS (Dependency Injection)
+# 2. SECURE IMPORTS
 # =============================================================================
 
-# --- Parallel Port Import ---
 try:
     from hardware.parport import ParPort
     ParPortAvailable = True
-except (ImportError, OSError) as e:
+except (ImportError, OSError):
     ParPort = SafeDummyParPort
     ParPortAvailable = False
 
-# --- EyeTracker Import ---
 try:
-    # Handles missing 'libeyelink_core.so' or 'pylink' library
     from hardware.eyetracker import EyeTracker
     EyeTrackerAvailable = True
-except (ImportError, OSError) as e:
+except (ImportError, OSError):
     EyeTracker = SafeDummyEyeTracker
     EyeTrackerAvailable = False
 
@@ -70,16 +61,8 @@ except (ImportError, OSError) as e:
 # =============================================================================
 # 3. FACTORY FUNCTION
 # =============================================================================
+
 def setup_hardware(parport_actif=False, eyetracker_actif=False, window=None):
-    """
-    Initializes hardware based on configuration and availability.
-    
-    Returns:
-        tuple: (lpt_instance, et_instance)
-        Both are guaranteed to be objects (Real or Dummy), never None.
-    """
-    
-    # --- 1. SETUP PARALLEL PORT ---
     lpt = None
     if parport_actif:
         if ParPortAvailable:
@@ -93,22 +76,17 @@ def setup_hardware(parport_actif=False, eyetracker_actif=False, window=None):
             logger.log("LPT: Active in config but drivers missing. Using Dummy.")
             lpt = SafeDummyParPort()
     else:
-        # Intentionally disabled by user
         lpt = SafeDummyParPort()
 
-    # --- 2. SETUP EYETRACKER ---
     et = None
     if eyetracker_actif:
         if EyeTrackerAvailable:
             try:
-                # Instantiate Real EyeTracker
                 et = EyeTracker(dummy_mode=False)
-                
-                # Check internal state (some wrappers have their own dummy flag)
                 if not getattr(et, 'dummy_mode', False):
                     logger.ok("EyeTracker: Connected and Ready.")
                 else:
-                    logger.warn("EyeTracker: Driver loaded but device not found (Internal Dummy).")
+                    logger.warn("EyeTracker: Driver loaded but device not found.")
             except Exception as e:
                 logger.err(f"EyeTracker: Init failed ({e}). Reverting to Dummy.")
                 et = SafeDummyEyeTracker()
@@ -116,7 +94,6 @@ def setup_hardware(parport_actif=False, eyetracker_actif=False, window=None):
             logger.log("EyeTracker: Active in config but drivers missing. Using Dummy.")
             et = SafeDummyEyeTracker()
     else:
-        # Intentionally disabled by user
         et = SafeDummyEyeTracker()
 
     return lpt, et
